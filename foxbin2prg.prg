@@ -13062,15 +13062,19 @@ DEFINE CLASS c_conversor_bin_a_prg AS c_conversor_base
 		WITH THIS AS c_conversor_bin_a_prg OF 'FOXBIN2PRG.PRG'
 			toEx.UserValue = toEx.UserValue + CR_LF
 
-			IF INLIST(.c_Type, 'SCX', 'VCX') THEN
-				lcMethods		= METHODS
+			IF NOT EMPTY(ALIAS()) AND INLIST(.c_Type, 'SCX', 'VCX') THEN
+				IF TYPE("METHODS")#"U" THEN
+					lcMethods		= METHODS
+				ENDIF
 				toEx.UserValue	= toEx.UserValue + 'Error location ' + '..............................' + CR_LF
 
-				IF NOT EMPTY(Parent)
+				IF TYPE("PARENT")#"U" AND NOT EMPTY(Parent) THEN
 					lcLocation	= lcLocation + Parent + '.'
 				ENDIF
 
-				lcLocation	= lcLocation + OBJNAME
+				IF TYPE("OBJNAME")#"U" THEN
+					lcLocation	= lcLocation + OBJNAME
+				ENDIF
 
 				*-- Busco el Procedure si hay un n_Methods_LineNo
 				ALINES(laCodeLines, lcMethods)
