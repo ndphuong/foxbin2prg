@@ -24,7 +24,7 @@ Change History -------------------------------------------------------------
 - New fb2p_diff.exe: Allow a quick Diff of VFP9 binaries, for those that don't need converting to text manually
 - Bug Fix: When processing a directory or a project with all the files, sometimes an "Alias already in use" error may occur (Dave Crozier)
 - Bug Fix mnx: When menu options contains '&&' in their texts, menu binary is corrupted when regenerated (Walter Nichols)
-- Bug Fix fb2p_diff: When calling fb2p_diff.exe from a directory out of FoxBin2Prg dir, an error is thrown because FoxBin2Prg is not found
+- Bug Fix fb2p_diff: When calling fb2p_diff.exe from a directory out of FoxBin2Prg dir, an error is thrown because FoxBin2Prg is not found (Mike Potjer)
 
 
 2015/06/21	v1.19.45
