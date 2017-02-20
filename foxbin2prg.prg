@@ -192,6 +192,7 @@
 * 10/07/2016	FDBOZZO		v1.19.48	Fix defecto db2: Cuando se arregló el bug del memo multi-línea, se introdujo un nuevo defecto por el cual un memo de linea-simple se decodifica mal (Nathan Brown)
 * 11/07/2016	FDBOZZO		v1.19.48	Bug Fix pj2: Cuando se regenera el binario de un PJ2 con archivos en una ruta con paréntesis y espacios, se genera un error "Error 36, Command contains unrecognized phrase/keyword" (Nathan Brown)
 * 11/07/2016	FDBOZZO		v1.19.48	Bug Fix frx: Los ControlSource de objetos OLE que contienen comillas se generan mal (Nathan Brown)
+* 18/02/2017    FDBOZZO     v1.19.49    Mejora: Nueva opción de configuración "PRG_Compat_Level": 0=Legacy
 * </HISTORIAL DE CAMBIOS Y NOTAS IMPORTANTES>
 *
 *---------------------------------------------------------------------------------------------------
@@ -790,6 +791,7 @@ DEFINE CLASS c_foxbin2prg AS Session
 	l_RemoveZOrderSetFromProps		= .F.
 	l_Recompile						= .T.
 	n_UseClassPerFile				= 0
+	PRG_Compat_Level				= 1				&& 0=COMPATIBLE WITH FoxBin2Prg v1.19.48 and earlier, 1=Include HELPSTRING
 	n_ExcludeDBFAutoincNextval		= 0
 	l_ClassPerFileCheck				= .F.
 	l_RedirectClassPerFileToMain	= .F.
@@ -1437,6 +1439,15 @@ DEFINE CLASS c_foxbin2prg AS Session
 			RETURN THIS.n_ExcludeDBFAutoincNextval
 		ELSE
 			RETURN NVL( THIS.o_Configuration( THIS.n_CFG_Actual ).n_ExcludeDBFAutoincNextval, THIS.n_ExcludeDBFAutoincNextval )
+		ENDIF
+	ENDPROC
+
+
+	PROCEDURE PRG_Compat_Level_ACCESS
+		IF THIS.n_CFG_Actual = 0 OR ISNULL( THIS.o_Configuration( THIS.n_CFG_Actual ) )
+			RETURN THIS.PRG_Compat_Level
+		ELSE
+			RETURN NVL( THIS.o_Configuration( THIS.n_CFG_Actual ).PRG_Compat_Level, THIS.PRG_Compat_Level )
 		ENDIF
 	ENDPROC
 
@@ -2174,6 +2185,13 @@ DEFINE CLASS c_foxbin2prg AS Session
 							IF INLIST( lcValue, '0', '1' ) THEN
 								lo_CFG.n_ExcludeDBFAutoincNextval	= INT( VAL( lcValue ) )
 								.writeLog( C_TAB + JUSTFNAME(lcConfigFile) + ' > ExcludeDBFAutoincNextval:   ' + TRANSFORM(lo_CFG.n_ExcludeDBFAutoincNextval) )
+							ENDIF
+
+						CASE LEFT( laConfig(I), 17 ) == LOWER('PRG_Compat_Level:')
+							lcValue	= ALLTRIM( SUBSTR( laConfig(I), 18 ) )
+							IF INLIST( lcValue, '0', '1' ) THEN
+								lo_CFG.PRG_Compat_Level	= INT( VAL( lcValue ) )
+								.writeLog( C_TAB + JUSTFNAME(lcConfigFile) + ' > PRG_Compat_Level:           ' + TRANSFORM(lo_CFG.n_ExcludeDBFAutoincNextval) )
 							ENDIF
 
 						ENDCASE
@@ -27390,6 +27408,7 @@ DEFINE CLASS CL_CFG AS CUSTOM
 		+ [<memberdata name="dbf_conversion_excluded" display="DBF_Conversion_Excluded"/>] ;
 		+ [<memberdata name="dbc_conversion_support" display="DBC_Conversion_Support"/>] ;
 		+ [<memberdata name="c_backgroundimage" display="c_BackgroundImage"/>] ;
+		+ [<memberdata name="prg_compat_level" display="PRG_Compat_Level"/>] ;
 		+ [<memberdata name="copyfrom" display="CopyFrom"/>] ;
 		+ [</VFPData>]
 
@@ -27436,6 +27455,7 @@ DEFINE CLASS CL_CFG AS CUSTOM
 	DBF_Conversion_Excluded			= NULL
 	DBC_Conversion_Support			= NULL
 	c_BackgroundImage				= NULL
+	PRG_Compat_Level				= NULL
 
 
 	PROCEDURE CopyFrom
@@ -27480,6 +27500,7 @@ DEFINE CLASS CL_CFG AS CUSTOM
 			.DBF_Conversion_Excluded		= toParentCFG.DBF_Conversion_Excluded
 			.DBC_Conversion_Support			= toParentCFG.DBC_Conversion_Support
 			.c_BackgroundImage				= toParentCFG.c_BackgroundImage
+			.PRG_Compat_Level				= toParentCFG.PRG_Compat_Level
 		ENDWITH
 	ENDPROC
 
