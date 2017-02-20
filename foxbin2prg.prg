@@ -8307,30 +8307,31 @@ DEFINE CLASS c_conversor_prg_a_bin AS c_conversor_base
 
 
 	PROCEDURE getClassMethodComment
-		LPARAMETERS tcMethodName AS STRING, toClase
+		*---------------------------------------------------------------------------------------------------
+		* PARÁMETROS:				(v=Pasar por valor | @=Pasar por referencia) (!=Obligatorio | ?=Opcional) (IN/OUT)
+		* tcLine					(@! IN/OUT) Línea a separar del comentario (En este punto, el único comentario puede ser un HELPSTRING)
+		* tcComment					(@?    OUT) Comentario
+		*---------------------------------------------------------------------------------------------------
+		LPARAMETERS tcLine AS STRING, tcComment as String
 
 		#IF .F.
 			LOCAL toClase AS CL_CLASE OF 'FOXBIN2PRG.PRG'
 		#ENDIF
 
-		LOCAL I, lcComentario ;
-			, loProcedure AS CL_PROCEDURE OF 'FOXBIN2PRG.PRG'
-		lcComentario	= ''
+		LOCAL lnATC
+		tcComment	= ''
+		lnATC		= ATC("HELPSTRING", tcLine)
+		
+		IF lnATC > 0
+			tcComment	= ALLTRIM(SUBSTR(tcLine, lnATC + 10 ))
+			
+			* Quitar comillas
+			tcComment	= SUBSTR(tcComment, 2, LEN(tcComment) - 2)
+			
+			tcLine		= RTRIM(LEFT(tcLine, lnATC - 1 ), 0, CHR(9), CHR(0), ' ')
+		ENDIF
 
-		FOR I = 1 TO toClase._Procedure_Count
-			loProcedure	= NULL
-			loProcedure	= toClase._Procedures(I)
-
-			IF loProcedure._Nombre == tcMethodName
-				lcComentario	= loProcedure._Comentario
-				EXIT
-			ENDIF
-		ENDFOR
-
-		loProcedure	= NULL
-		RELEASE tcMethodName, toClase, loProcedure, I
-
-		RETURN lcComentario
+		RETURN tcComment
 	ENDPROC
 
 
@@ -9503,6 +9504,7 @@ DEFINE CLASS c_conversor_prg_a_bin AS c_conversor_base
 				*-- Estructura a reconocer: PROTECTED PROCEDURE nombre_del_procedimiento
 				llBloqueEncontrado	= .T.
 				tcProcedureAbierto	= ALLTRIM( SUBSTR( tcLine, 21 ) )
+				.getClassMethodComment( @tcProcedureAbierto, @tc_Comentario )
 				.evaluateProcedureDefinition( @toClase, I, @tc_Comentario, tcProcedureAbierto, 'protected', @toObjeto )
 
 
@@ -9510,18 +9512,21 @@ DEFINE CLASS c_conversor_prg_a_bin AS c_conversor_base
 				*-- Estructura a reconocer: HIDDEN PROCEDURE nombre_del_procedimiento
 				llBloqueEncontrado	= .T.
 				tcProcedureAbierto	= ALLTRIM( SUBSTR( tcLine, 18 ) )
+				.getClassMethodComment( @tcProcedureAbierto, @tc_Comentario )
 				.evaluateProcedureDefinition( @toClase, I, @tc_Comentario, tcProcedureAbierto, 'hidden', @toObjeto )
 
 			CASE UPPER( LEFT( tcLine, 10 ) ) == 'PROCEDURE '
 				*-- Estructura a reconocer: PROCEDURE [objeto.]nombre_del_procedimiento
 				llBloqueEncontrado	= .T.
 				tcProcedureAbierto	= ALLTRIM( SUBSTR( tcLine, 11 ) )
+				.getClassMethodComment( @tcProcedureAbierto, @tc_Comentario )
 				.evaluateProcedureDefinition( @toClase, I, @tc_Comentario, tcProcedureAbierto, 'normal', @toObjeto )
 
 			CASE UPPER( LEFT( tcLine, 19 ) ) == 'PROTECTED FUNCTION '
 				*-- Estructura a reconocer: PROTECTED PROCEDURE nombre_del_procedimiento
 				llBloqueEncontrado	= .T.
 				tcProcedureAbierto	= ALLTRIM( SUBSTR( tcLine, 20 ) )
+				.getClassMethodComment( @tcProcedureAbierto, @tc_Comentario )
 				.evaluateProcedureDefinition( @toClase, I, @tc_Comentario, tcProcedureAbierto, 'protected', @toObjeto )
 
 
@@ -9529,12 +9534,14 @@ DEFINE CLASS c_conversor_prg_a_bin AS c_conversor_base
 				*-- Estructura a reconocer: HIDDEN FUNCTION nombre_del_procedimiento
 				llBloqueEncontrado	= .T.
 				tcProcedureAbierto	= ALLTRIM( SUBSTR( tcLine, 17 ) )
+				.getClassMethodComment( @tcProcedureAbierto, @tc_Comentario )
 				.evaluateProcedureDefinition( @toClase, I, @tc_Comentario, tcProcedureAbierto, 'hidden', @toObjeto )
 
 			CASE UPPER( LEFT( tcLine, 9 ) ) == 'FUNCTION '
 				*-- Estructura a reconocer: FUNCTION [objeto.]nombre_del_procedimiento
 				llBloqueEncontrado	= .T.
 				tcProcedureAbierto	= ALLTRIM( SUBSTR( tcLine, 10 ) )
+				.getClassMethodComment( @tcProcedureAbierto, @tc_Comentario )
 				.evaluateProcedureDefinition( @toClase, I, @tc_Comentario, tcProcedureAbierto, 'normal', @toObjeto )
 
 			ENDCASE
@@ -13384,10 +13391,14 @@ DEFINE CLASS c_conversor_bin_a_prg AS c_conversor_base
 
 
 	PROCEDURE get_CLASS_METHODS
-		LPARAMETERS tnMethodCount, taMethods, taCode, taProtected, taPropsAndComments
+		LPARAMETERS tnMethodCount, taMethods, taCode, taProtected, taPropsAndComments, toFoxBin2Prg
 		*-- DEFINIR MÉTODOS DE LA CLASE
 		*-- Ubico los métodos protegidos y les cambio la definición
 		EXTERNAL ARRAY taMethods, taCode, taProtected, taPropsAndComments
+
+		#IF .F.
+			LOCAL toFoxBin2Prg AS c_foxbin2prg OF 'FOXBIN2PRG.PRG'
+		#ENDIF
 
 		TRY
 			LOCAL lcMethod, lcMethodName, lnProtectedItem, lnCommentRow, lcProcDef, lcMethods, lnLen
@@ -13421,7 +13432,11 @@ DEFINE CLASS c_conversor_bin_a_prg AS c_conversor_base
 
 						*-- Comentarios del método (si tiene)
 						IF lnCommentRow > 0 AND NOT EMPTY(taPropsAndComments(lnCommentRow,2))
-							lcMethod	= lcMethod + C_TAB + C_TAB + '&' + '& ' + taPropsAndComments(lnCommentRow,2)
+                            IF toFoxBin2Prg.PRG_Compat_Level = 0
+								lcMethod	= lcMethod + C_TAB + C_TAB + '&' + '& ' + taPropsAndComments(lnCommentRow,2)
+							ELSE
+								lcMethod	= lcMethod + C_TAB + C_TAB + 'HELPSTRING "' + taPropsAndComments(lnCommentRow,2) + '"'
+							ENDIF
 						ENDIF
 
 						*-- Código del método
@@ -14108,7 +14123,7 @@ DEFINE CLASS c_conversor_bin_a_prg AS c_conversor_base
 						CASE lnTextNodes = 0 AND UPPER( LEFT(lcLine, 10) ) == 'PROCEDURE '
 							tnMethodCount	= tnMethodCount + 1
 							DIMENSION taMethods(tnMethodCount, 3), taCode(tnMethodCount)
-							taMethods(tnMethodCount, 1)	= RTRIM( SUBSTR(lcLine, 11) )
+							taMethods(tnMethodCount, 1)	= RTRIM( SUBSTR(lcLine, 11), 0, CHR(9), CHR(0), ' ' )
 							taMethods(tnMethodCount, 2)	= tnMethodCount
 							taMethods(tnMethodCount, 3)	= ''
 							taCode(tnMethodCount)		= 'PROCEDURE ' + taMethods(tnMethodCount, 1) + CR_LF && laLine(I) + CR_LF
@@ -14117,7 +14132,7 @@ DEFINE CLASS c_conversor_bin_a_prg AS c_conversor_base
 						CASE lnTextNodes = 0 AND UPPER( LEFT(lcLine, 9) ) == 'FUNCTION '	&& NOT VALID WITH VFP IDE, BUT 3rd. PARTY SOFTWARE CAN USE IT
 							tnMethodCount	= tnMethodCount + 1
 							DIMENSION taMethods(tnMethodCount, 3), taCode(tnMethodCount)
-							taMethods(tnMethodCount, 1)	= RTRIM( SUBSTR(lcLine, 10) )
+							taMethods(tnMethodCount, 1)	= RTRIM( SUBSTR(lcLine, 10), 0, CHR(9), CHR(0), ' ' )
 							taMethods(tnMethodCount, 2)	= tnMethodCount
 							taMethods(tnMethodCount, 3)	= ''
 							taCode(tnMethodCount)		= 'PROCEDURE ' + taMethods(tnMethodCount, 1) + CR_LF && laLine(I) + CR_LF
@@ -14126,7 +14141,7 @@ DEFINE CLASS c_conversor_bin_a_prg AS c_conversor_base
 						CASE lnTextNodes = 0 AND UPPER( LEFT(lcLine, 17) ) == 'HIDDEN PROCEDURE '
 							tnMethodCount	= tnMethodCount + 1
 							DIMENSION taMethods(tnMethodCount, 3), taCode(tnMethodCount)
-							taMethods(tnMethodCount, 1)	= RTRIM( SUBSTR(lcLine, 18) )
+							taMethods(tnMethodCount, 1)	= RTRIM( SUBSTR(lcLine, 18), 0, CHR(9), CHR(0), ' ' )
 							taMethods(tnMethodCount, 2)	= tnMethodCount
 							taMethods(tnMethodCount, 3)	= 'HIDDEN '
 							taCode(tnMethodCount)		= 'HIDDEN PROCEDURE ' + taMethods(tnMethodCount, 1) + CR_LF && laLine(I) + CR_LF
@@ -14135,7 +14150,7 @@ DEFINE CLASS c_conversor_bin_a_prg AS c_conversor_base
 						CASE lnTextNodes = 0 AND UPPER( LEFT(lcLine, 16) ) == 'HIDDEN FUNCTION '	&& NOT VALID WITH VFP IDE, BUT 3rd. PARTY SOFTWARE CAN USE IT
 							tnMethodCount	= tnMethodCount + 1
 							DIMENSION taMethods(tnMethodCount, 3), taCode(tnMethodCount)
-							taMethods(tnMethodCount, 1)	= RTRIM( SUBSTR(lcLine, 17) )
+							taMethods(tnMethodCount, 1)	= RTRIM( SUBSTR(lcLine, 17), 0, CHR(9), CHR(0), ' ' )
 							taMethods(tnMethodCount, 2)	= tnMethodCount
 							taMethods(tnMethodCount, 3)	= 'HIDDEN '
 							taCode(tnMethodCount)		= 'HIDDEN PROCEDURE ' + taMethods(tnMethodCount, 1) + CR_LF && laLine(I) + CR_LF
@@ -14144,7 +14159,7 @@ DEFINE CLASS c_conversor_bin_a_prg AS c_conversor_base
 						CASE lnTextNodes = 0 AND UPPER( LEFT(lcLine, 20) ) == 'PROTECTED PROCEDURE '
 							tnMethodCount	= tnMethodCount + 1
 							DIMENSION taMethods(tnMethodCount, 3), taCode(tnMethodCount)
-							taMethods(tnMethodCount, 1)	= RTRIM( SUBSTR(lcLine, 21) )
+							taMethods(tnMethodCount, 1)	= RTRIM( SUBSTR(lcLine, 21), 0, CHR(9), CHR(0), ' ' )
 							taMethods(tnMethodCount, 2)	= tnMethodCount
 							taMethods(tnMethodCount, 3)	= 'PROTECTED '
 							taCode(tnMethodCount)		= 'PROTECTED PROCEDURE ' + taMethods(tnMethodCount, 1) + CR_LF && laLine(I) + CR_LF
@@ -14153,7 +14168,7 @@ DEFINE CLASS c_conversor_bin_a_prg AS c_conversor_base
 						CASE lnTextNodes = 0 AND UPPER( LEFT(lcLine, 19) ) == 'PROTECTED FUNCTION '	&& NOT VALID WITH VFP IDE, BUT 3rd. PARTY SOFTWARE CAN USE IT
 							tnMethodCount	= tnMethodCount + 1
 							DIMENSION taMethods(tnMethodCount, 3), taCode(tnMethodCount)
-							taMethods(tnMethodCount, 1)	= RTRIM( SUBSTR(lcLine, 20) )
+							taMethods(tnMethodCount, 1)	= RTRIM( SUBSTR(lcLine, 20), 0, CHR(9), CHR(0), ' ' )
 							taMethods(tnMethodCount, 2)	= tnMethodCount
 							taMethods(tnMethodCount, 3)	= 'PROTECTED '
 							taCode(tnMethodCount)		= 'PROTECTED PROCEDURE ' + taMethods(tnMethodCount, 1) + CR_LF && laLine(I) + CR_LF
@@ -15279,7 +15294,7 @@ DEFINE CLASS c_conversor_vcx_a_prg AS c_conversor_bin_a_prg
 					.method2Array( loRegClass.METHODS, @laMethods, @laCode, '', @lnMethodCount ;
 						, @laPropsAndComments, lnPropsAndComments_Count, @laProtected, lnProtected_Count, @toFoxBin2Prg, @loRegClass )
 
-					.get_CLASS_METHODS( @lnMethodCount, @laMethods, @laCode, @laProtected, @laPropsAndComments )
+					.get_CLASS_METHODS( @lnMethodCount, @laMethods, @laCode, @laProtected, @laPropsAndComments, @toFoxBin2Prg )
 
 					lnLastClass		= 1
 					lcMethods		= ''
@@ -15638,7 +15653,7 @@ DEFINE CLASS c_conversor_scx_a_prg AS c_conversor_bin_a_prg
 					.method2Array( loRegClass.METHODS, @laMethods, @laCode, '', @lnMethodCount ;
 						, @laPropsAndComments, lnPropsAndComments_Count, @laProtected, lnProtected_Count, @toFoxBin2Prg, @loRegClass )
 
-					.get_CLASS_METHODS( @lnMethodCount, @laMethods, @laCode, @laProtected, @laPropsAndComments )
+					.get_CLASS_METHODS( @lnMethodCount, @laMethods, @laCode, @laProtected, @laPropsAndComments, @toFoxBin2Prg )
 
 					lnLastClass		= 1
 					lcMethods		= ''
