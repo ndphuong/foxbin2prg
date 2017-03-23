@@ -791,7 +791,7 @@ DEFINE CLASS c_foxbin2prg AS Session
 	l_RemoveZOrderSetFromProps		= .F.
 	l_Recompile						= .T.
 	n_UseClassPerFile				= 0
-	PRG_Compat_Level				= 1				&& 0=COMPATIBLE WITH FoxBin2Prg v1.19.48 and earlier, 1=Include HELPSTRING
+	PRG_Compat_Level				= 0				&& 0=COMPATIBLE WITH FoxBin2Prg v1.19.48 and earlier, 1=Include HELPSTRING
 	n_ExcludeDBFAutoincNextval		= 0
 	l_ClassPerFileCheck				= .F.
 	l_RedirectClassPerFileToMain	= .F.
@@ -4754,272 +4754,7 @@ DEFINE CLASS c_foxbin2prg AS Session
 	ENDPROC
 
 
-	FUNCTION wscriptshell_run
-		* Modificación basada en la rutina RunExitCode.prg de William GC Steinford (nov 2002)
-		* pero compatible con el método Run de WScript.Shell para su reemplazo cuando no es posible usarlo.
-		* http://fox.wikis.com/wc.dll?Wiki~ProcessExitCode
-		*-----------------------------------------------------------------------------------------------
-		* 'Run' Parameter Documentation at: https://msdn.microsoft.com/en-us/library/d5fk67ky%28v=vs.84%29.aspx
-		*-----------------------------------------------------------------------------------------------
-		LPARAMETERS tcCmdLine, tnWindowStyle, tbWaitOnReturn, tlDebug
-		* ? WScriptShell_Run("c:\windows\system32\cmd.exe /c dir c:\*.* > \temp\dir.txt")
-
-		LOCAL lnWfSO, ln_dwFlags, ln_wShowWindow, lcStartInfo, lcProcessInfo, ln_hProcess, ln_hThread ;
-			, lnExitCode, ln_dwProcessId, ln_dwThreadId, tcProgFile, laDirFile(1,5)
-
-		TRY
-			DECLARE SHORT CreateProcess IN WIN32API ;
-				STRING lpszModuleName, ;
-				STRING @lpszCommandLine, ;
-				STRING lpSecurityAttributesProcess, ;
-				STRING lpSecurityAttributesThread, ;
-				SHORT bInheritHandles, ;
-				INTEGER dwCreateFlags, ;
-				STRING lpvEnvironment, ;
-				STRING lpszStartupDir, ;
-				STRING @lpStartInfo, ;
-				STRING @lpProcessInfo
-
-			DECLARE LONG WaitForSingleObject IN WIN32API INTEGER hHandle, LONG dwMilliseconds
-			DECLARE INTEGER GetExitCodeProcess IN WIN32API INTEGER ln_hProcess, INTEGER @ lnExitCode
-			DECLARE INTEGER CloseHandle IN kernel32.DLL INTEGER hObject
-			*DECLARE INTEGER ShellExecuteEx IN Shell32 STRING @lpExecInfo
-			DECLARE LONG ShellExecuteEx IN shell32.DLL STRING @
-			DECLARE LONG HeapAlloc IN WIN32API LONG, LONG, LONG
-			DECLARE LONG HeapFree IN WIN32API LONG, LONG, LONG
-			DECLARE LONG GetProcessHeap IN WIN32API
-			*DECLARE LONG WaitForSingleObject IN WIN32API LONG, LONG
-			DECLARE LONG TerminateProcess IN WIN32API LONG, LONG
-
-			* NOTA: Las constantes para VFP se pueden consultar en http://www.news2news.com/vfp/w32constants.php
-
-			#DEFINE SEE_MASK_NOCLOSEPROCESS  0x00000040
-			#DEFINE WAIT_MILLISECOND 3000
-
-			#DEFINE SW_SHOW			5
-			#DEFINE STILL_ACTIVE	0x103
-			#DEFINE cnINFINITE		0xFFFFFFFF
-			#DEFINE cnHalfASecond	500 && milliseconds
-			#DEFINE cnTimedOut		0x0102
-
-			*-- Constantes para WaitForSingleObject
-			#DEFINE WAIT_ABANDONED	0x00000080
-			#DEFINE WAIT_OBJECT_0	0x00000000
-			#DEFINE WAIT_TIMEOUT	0x00000102
-			#DEFINE WAIT_FAILED		0xFFFFFFFF
-
-			tcProgFile		= EVL(tcProgFile, NULL)
-			tcCmdLine		= EVL(tcCmdLine, NULL)
-
-			DO CASE
-			CASE VARTYPE(tbWaitOnReturn) = "L"
-			CASE VARTYPE(tbWaitOnReturn) = "N"
-				tbWaitOnReturn	= (tbWaitOnReturn=1)
-			OTHERWISE
-				ERROR 'Invalid value for tbWaitOnReturn parameter'
-			ENDCASE
-
-			IF VARTYPE(tnWindowStyle) # "N" OR NOT BETWEEN(tnWindowStyle, 0, 10) THEN
-				tnWindowStyle	= 10
-			ENDIF
-
-			ln_dwFlags		= 1
-			ln_wShowWindow	= tnWindowStyle
-
-			* DOCUMENTACIÓN estructura _STARTUPINFO:
-			* creates the STARTUP structure to specify main window
-			* properties if a new window is created for a new process
-
-			*| typedef struct _STARTUPINFO {
-			*|     DWORD   cb;                4
-			*|     LPTSTR  lpReserved;        4
-			*|     LPTSTR  lpDesktop;         4
-			*|     LPTSTR  lpTitle;           4
-			*|     DWORD   dwX;               4
-			*|     DWORD   dwY;               4
-			*|     DWORD   dwXSize;           4
-			*|     DWORD   dwYSize;           4
-			*|     DWORD   dwXCountChars;     4
-			*|     DWORD   dwYCountChars;     4
-			*|     DWORD   dwFillAttribute;   4
-			*|     DWORD   dwFlags;           4
-			*|     WORD    wShowWindow;       2
-			*|     WORD    cbReserved2;       2
-			*|     LPBYTE  lpReserved2;       4
-			*|     HANDLE  hStdInput;         4
-			*|     HANDLE  hStdOutput;        4
-			*|     HANDLE  hStdError;         4
-			*| } STARTUPINFO, *LPSTARTUPINFO; total: 68 bytes
-			lcStartInfo	= BINTOC(68,'4RS') ;
-				+ BINTOC(0,'4RS') + BINTOC(0,'4RS') + BINTOC(0,'4RS') ;
-				+ BINTOC(0,'4RS') + BINTOC(0,'4RS') + BINTOC(0,'4RS') + BINTOC(0,'4RS') ;
-				+ BINTOC(0,'4RS') + BINTOC(0,'4RS') + BINTOC(0,'4RS') ;
-				+ BINTOC(ln_dwFlags,'4RS') ;
-				+ BINTOC(ln_wShowWindow,'2RS') ;
-				+ BINTOC(0,'2RS') + BINTOC(0,'4RS') ;
-				+ BINTOC(0,'4RS') + BINTOC(0,'4RS') + BINTOC(0,'4RS')
-
-			lcProcessInfo = REPLICATE( CHR(0), 16 )
-
-			* DOCUMENTACIÓN estructura _PROCESS_INFORMATION:
-			* https://msdn.microsoft.com/en-us/library/windows/desktop/ms684873%28v=vs.85%29.aspx
-			*    typedef struct _PROCESS_INFORMATION {
-			*        HANDLE hProcess;
-			*        HANDLE hThread;
-			*        DWORD dwProcessId;
-			*        DWORD dwThreadId;
-			*    } PROCESS_INFORMATION;
-			*
-
-			IF CreateProcess( tcProgFile, tcCmdLine,0,0,0,0,0,0, lcStartInfo, @lcProcessInfo ) = 0
-
-				*-- Segundo intento: Si se definió un archivo (ej: un TXT,LOG,etc) intento lanzarlo
-				*-- con la aplicación predeterminada
-				IF ADIR(laDirFile, tcCmdLine) = 1 THEN
-					LOCAL lcInfo, lnHeap, lnLen, lnPtr
-
-					*-- Ejemplo adaptado de: http://www.foxite.com/archives/0000316611.htm
-					lnLen	= LEN(tcCmdLine) + 1
-					lnHeap	= GetProcessHeap()
-					lnPtr	= HeapAlloc(lnHeap, 0x8, 5 + lnLen)
-					SYS(2600, lnPtr, 5, [open] + CHR(0))
-					SYS(2600, lnPtr+5, lnLen, tcCmdLine + CHR(0))
-
-					* DOCUMENTACIÓN estructura _SHELLEXECUTEINFO:
-					* https://msdn.microsoft.com/en-us/library/windows/desktop/bb759784%28v=vs.85%29.aspx
-					*typedef struct _SHELLEXECUTEINFO {
-					*    DWORD     cbSize;            4
-					*    ULONG     fMask;             4
-					*    HWND      hwnd;              4
-					*    LPCTSTR   lpVerb;            4
-					*    LPCTSTR   lpFile;            4
-					*    LPCTSTR   lpParameters;      4
-					*    LPCTSTR   lpDirectory;       4
-					*    int       nShow;             4
-					*    HINSTANCE hInstApp;          4
-					*    LPVOID    lpIDList;          4
-					*    LPCTSTR   lpClass;           4
-					*    HKEY      hkeyClass;         4
-					*    DWORD     dwHotKey;          4
-					*    union {
-					*        HANDLE hIcon;
-					*        HANDLE hMonitor;
-					*    } DUMMYUNIONNAME;            4
-					*    HANDLE    hProcess;          4
-					*} SHELLEXECUTEINFO, *LPSHELLEXECUTEINFO;
-					*
-
-					lcInfo = ;
-						BINTOC(60, [4RS]) + ;
-						BINTOC(SEE_MASK_NOCLOSEPROCESS, [4RS]) + ;
-						BINTOC(0, [4RS]) + ;
-						BINTOC(lnPtr, [4RS]) + ;
-						BINTOC(lnPtr+5, [4RS]) + ;
-						BINTOC(0, [4RS]) + ;
-						BINTOC(0, [4RS]) + ;
-						BINTOC(1, [4RS]) + ;
-						REPLICATE(CHR(0), 28)
-
-					IF ShellExecuteEx(@lcInfo) = 0
-						IF tlDebug
-							? "Could not call process"
-						ENDIF
-						lnExitCode	= -1
-						EXIT
-					ELSE
-						HeapFree(lnHeap, 0, lnPtr)
-						ln_hProcess	= CTOBIN(RIGHT(lcInfo, 4), [4RS])
-						ln_hThread	= 0
-
-						IF tlDebug
-							? "Process handle    = "+TRANSFORM(ln_hProcess)
-							? "Thread handle     = "+TRANSFORM(ln_hThread)
-						ENDIF
-
-						*IF lnProcess != 0
-						*	WaitForSingleObject(ln_hProcess, WAIT_MILLISECOND)
-						*	IF tlDebug
-						*		? "Terminating process!"
-						*	ENDIF
-						*	TerminateProcess(ln_hProcess, 0)
-						*ENDIF
-					ENDIF
-
-				ELSE
-					IF tlDebug
-						? "Could not create process"
-					ENDIF
-					lnExitCode	= -1
-					EXIT
-				ENDIF
-			ELSE
-
-				* Process and thread handles returned in ProcInfo structure
-				ln_hProcess 	= CTOBIN( LEFT( lcProcessInfo, 4 ), '4RS' )
-				ln_hThread		= CTOBIN( SUBSTR( lcProcessInfo, 5, 4 ), '4RS' )
-				ln_dwProcessId	= CTOBIN( SUBSTR( lcProcessInfo, 9, 4 ), '4RS' )
-				ln_dwThreadId	= CTOBIN( SUBSTR( lcProcessInfo, 13, 4 ), '4RS' )
-
-				IF tlDebug
-					? "Process handle    = "+TRANSFORM(ln_hProcess)
-					? "Thread handle     = "+TRANSFORM(ln_hThread)
-					? "Process handle id = "+TRANSFORM(ln_dwProcessId)
-					? "Thread handle id  = "+TRANSFORM(ln_dwThreadId)
-				ENDIF
-			ENDIF
-
-			IF tbWaitOnReturn THEN
-				* // Give the process time to execute and finish
-				lnExitCode = STILL_ACTIVE
-
-				DO WHILE lnExitCode = STILL_ACTIVE
-					*lnWfSO	= WaitForSingleObject(ln_hProcess, cnHalfASecond)
-					lnWfSO	= WaitForSingleObject(ln_hProcess, cnINFINITE)
-
-					IF tlDebug
-						? 'lnWfSO = ' + TRANSFORM(lnWfSO)
-					ENDIF
-
-					IF GetExitCodeProcess(ln_hProcess, @lnExitCode) <> 0
-						DO CASE
-						CASE lnExitCode = STILL_ACTIVE
-							IF tlDebug
-								? "Process is still active"
-							ENDIF
-						OTHERWISE
-							IF tlDebug
-								? "Exit code = "+ TRANSFORM( lnExitCode )
-							ENDIF
-						ENDCASE
-					ELSE
-						IF tlDebug
-							? "GetExitCodeProcess() failed"
-						ENDIF
-						lnExitCode	= -2
-					ENDIF
-
-					DOEVENTS
-				ENDDO
-			ELSE
-				lnExitCode	= 0
-			ENDIF
-
-			*-- DOCUMENTACIÓN sobre cierre procesos/threads:
-			*-- https://msdn.microsoft.com/en-us/library/windows/desktop/ms682512%28v=vs.85%29.aspx
-			=CloseHandle(ln_hProcess)
-			=CloseHandle(ln_hThread)
-
-			IF tlDebug
-				? '> FUNCTION RETURN VALUE = '
-			ENDIF
-		ENDTRY
-
-		RETURN lnExitCode
-	ENDFUNC
-
-
 ENDDEFINE
-
 
 
 DEFINE CLASS frm_avance AS Form
@@ -28093,3 +27828,443 @@ DEFINE CLASS CL_DBF_CFG AS CUSTOM
 	DBF_Conversion_Condition	= ''
 	DBF_Conversion_Support		= NULL
 ENDDEFINE
+
+
+
+**************************************************************************************************************
+
+FUNCTION WScriptShell_Run(tcCmdLine as String, tnWindowStyle as Integer, tbWaitOnReturn as Boolean, tlDebug as Logical)
+	* 14/09/2015 Fernando D. Bozzo - http://fox.wikis.com/wc.dll?Wiki~WScriptShellRun~VFP
+	* Modificación basada en la rutina RunExitCode.prg de William GC Steinford (nov 2002)
+	* pero compatible con el método Run de WScript.Shell para su reemplazo cuando no es posible usarlo.
+	* http://fox.wikis.com/wc.dll?Wiki~ProcessExitCode
+	*-----------------------------------------------------------------------------------------------
+	* 'Run' Parameter Documentation at: https://msdn.microsoft.com/en-us/library/d5fk67ky%28v=vs.84%29.aspx
+	*
+	* NOTA IMPORTANTE:
+	* A diferencia del WScript.Shell.Run original, el valor tbWaitOnReturn se comporta como un timeout
+	* en milisegundos si se pasa un valor mayor a 1, pasado el cual se mata a la tarea invocada.
+	*-----------------------------------------------------------------------------------------------
+	* Ej.1: Ejecutar el comando DIR en una consola y enviar la salida stdout a un archivo dir.txt
+	* ? WScriptShell_Run("c:\windows\system32\cmd.exe /c dir c:\*.* > \temp\dir.txt")
+	*
+	*-----------------------------------------------------------------------------------------------
+	* Ej.2: Ejecutar la calculadora de Windows en ventana normal y esperar 5 segundos a que el usuario la cierre, o matarla.
+	* ? WScriptShell_Run("calc.exe", 5, 5000, .T.)
+	*
+	*-----------------------------------------------------------------------------------------------
+	* Ej.3: Ejecutar la calculadora de Windows en ventana normal y no esperar a su cierre.
+	* ? WScriptShell_Run("calc.exe", 5, 0, .T.)
+	*
+	*-----------------------------------------------------------------------------------------------
+	* Ej.4: Ejecutar el Notepad de Windows en ventana maximizada y esperar 15 segundos a que el usuario la cierre, o matarla.
+	* ? WScriptShell_Run("notepad.exe", 3, 15000, .T.)
+	*
+	*-----------------------------------------------------------------------------------------------
+	* Ej.5: Ejecutar el Notepad de Windows en ventana maximizada y esperar indefinidamente a que el usuario la cierre, o matarla.
+	* ? WScriptShell_Run("notepad.exe", 3, 1, .T.)
+	*
+	*-----------------------------------------------------------------------------------------------
+
+	LOCAL lnWfSO, ln_dwFlags, ln_wShowWindow, lcStartInfo, lcProcessInfo, ln_hProcess, ln_hThread ;
+		, lnExitCode, ln_dwProcessId, ln_dwThreadId, tcProgFile, laDirFile(1,5), lnTimeout
+
+	TRY
+		* NOTA: Las constantes para VFP se pueden consultar en http://www.news2news.com/vfp/w32constants.php
+
+		#DEFINE SEE_MASK_NOCLOSEPROCESS  0x00000040
+		#DEFINE WAIT_MILLISECOND 3000
+
+		#DEFINE SW_SHOW			5
+		#DEFINE STILL_ACTIVE	0x103
+		#DEFINE cnINFINITE		0xFFFFFFFF
+		#DEFINE cnHalfASecond	500 && milliseconds
+		#DEFINE cnTimedOut		0x0102
+
+		*-- Constantes para WaitForSingleObject
+		#DEFINE WAIT_ABANDONED	0x00000080
+		#DEFINE WAIT_OBJECT_0	0x00000000
+		#DEFINE WAIT_TIMEOUT	0x00000102
+		#DEFINE WAIT_FAILED		0xFFFFFFFF
+
+		tcProgFile		= EVL(tcProgFile, NULL)
+		tcCmdLine		= EVL(tcCmdLine, NULL)
+		lnTimeout		= cnINFINITE
+		lnExitCode		= 0
+
+		DO CASE
+		CASE VARTYPE(tbWaitOnReturn) = "L"
+		CASE VARTYPE(tbWaitOnReturn) = "N"
+			* Si se indica un valor mayor a 1, se interpreta como "esperar por N milisegundos"
+			IF tbWaitOnReturn > 1
+				lnTimeout	= tbWaitOnReturn
+			ENDIF
+			tbWaitOnReturn	= (tbWaitOnReturn >= 1)
+		OTHERWISE
+			ERROR 'Invalid value for tbWaitOnReturn parameter'
+		ENDCASE
+
+		IF VARTYPE(tnWindowStyle) # "N" OR NOT BETWEEN(tnWindowStyle, 0, 10) THEN
+			tnWindowStyle	= 10
+		ENDIF
+
+		ln_dwFlags		= 1
+		ln_wShowWindow	= tnWindowStyle
+
+		* DOCUMENTACIÓN estructura _STARTUPINFO:
+		* creates the STARTUP structure to specify main window
+		* properties if a new window is created for a new process
+
+		*| typedef struct _STARTUPINFO {
+		*|     DWORD   cb;                4
+		*|     LPTSTR  lpReserved;        4
+		*|     LPTSTR  lpDesktop;         4
+		*|     LPTSTR  lpTitle;           4
+		*|     DWORD   dwX;               4
+		*|     DWORD   dwY;               4
+		*|     DWORD   dwXSize;           4
+		*|     DWORD   dwYSize;           4
+		*|     DWORD   dwXCountChars;     4
+		*|     DWORD   dwYCountChars;     4
+		*|     DWORD   dwFillAttribute;   4
+		*|     DWORD   dwFlags;           4
+		*|     WORD    wShowWindow;       2
+		*|     WORD    cbReserved2;       2
+		*|     LPBYTE  lpReserved2;       4
+		*|     HANDLE  hStdInput;         4
+		*|     HANDLE  hStdOutput;        4
+		*|     HANDLE  hStdError;         4
+		*| } STARTUPINFO, *LPSTARTUPINFO; total: 68 bytes
+		lcStartInfo	= BINTOC(68,'4RS') ;
+			+ BINTOC(0,'4RS') + BINTOC(0,'4RS') + BINTOC(0,'4RS') ;
+			+ BINTOC(0,'4RS') + BINTOC(0,'4RS') + BINTOC(0,'4RS') + BINTOC(0,'4RS') ;
+			+ BINTOC(0,'4RS') + BINTOC(0,'4RS') + BINTOC(0,'4RS') ;
+			+ BINTOC(ln_dwFlags,'4RS') ;
+			+ BINTOC(ln_wShowWindow,'2RS') ;
+			+ BINTOC(0,'2RS') + BINTOC(0,'4RS') ;
+			+ BINTOC(0,'4RS') + BINTOC(0,'4RS') + BINTOC(0,'4RS')
+
+		lcProcessInfo = REPLICATE( CHR(0), 16 )
+
+		* DOCUMENTACIÓN estructura _PROCESS_INFORMATION:
+		* https://msdn.microsoft.com/en-us/library/windows/desktop/ms684873%28v=vs.85%29.aspx
+		*    typedef struct _PROCESS_INFORMATION {
+		*        HANDLE hProcess;
+		*        HANDLE hThread;
+		*        DWORD dwProcessId;
+		*        DWORD dwThreadId;
+		*    } PROCESS_INFORMATION;
+		*
+
+		IF CreateProcess( tcProgFile, tcCmdLine,0,0,0,0,0,0, lcStartInfo, @lcProcessInfo ) = 0
+
+			*-- Segundo intento: Si se definió un archivo (ej: un TXT,LOG,etc) intento lanzarlo
+			*-- con la aplicación predeterminada
+			IF ADIR(laDirFile, tcCmdLine) = 1 THEN
+				LOCAL lcInfo, lnHeap, lnLen, lnPtr
+
+				*-- Ejemplo adaptado de: http://www.foxite.com/archives/0000316611.htm
+				lnLen	= LEN(tcCmdLine) + 1
+				lnHeap	= GetProcessHeap()
+				lnPtr	= HeapAlloc(lnHeap, 0x8, 5 + lnLen)
+				SYS(2600, lnPtr, 5, [open] + CHR(0))
+				SYS(2600, lnPtr+5, lnLen, tcCmdLine + CHR(0))
+
+				* DOCUMENTACIÓN estructura _SHELLEXECUTEINFO:
+				* https://msdn.microsoft.com/en-us/library/windows/desktop/bb759784%28v=vs.85%29.aspx
+				*typedef struct _SHELLEXECUTEINFO {
+				*    DWORD     cbSize;            4
+				*    ULONG     fMask;             4
+				*    HWND      hwnd;              4
+				*    LPCTSTR   lpVerb;            4
+				*    LPCTSTR   lpFile;            4
+				*    LPCTSTR   lpParameters;      4
+				*    LPCTSTR   lpDirectory;       4
+				*    int       nShow;             4
+				*    HINSTANCE hInstApp;          4
+				*    LPVOID    lpIDList;          4
+				*    LPCTSTR   lpClass;           4
+				*    HKEY      hkeyClass;         4
+				*    DWORD     dwHotKey;          4
+				*    union {
+				*        HANDLE hIcon;            
+				*        HANDLE hMonitor;         
+				*    } DUMMYUNIONNAME;            4
+				*    HANDLE    hProcess;          4
+				*} SHELLEXECUTEINFO, *LPSHELLEXECUTEINFO;
+				*
+
+				lcInfo = ;
+					BINTOC(60, [4RS]) + ;
+					BINTOC(SEE_MASK_NOCLOSEPROCESS, [4RS]) + ;
+					BINTOC(0, [4RS]) + ;
+					BINTOC(lnPtr, [4RS]) + ;
+					BINTOC(lnPtr+5, [4RS]) + ;
+					BINTOC(0, [4RS]) + ;
+					BINTOC(0, [4RS]) + ;
+					BINTOC(1, [4RS]) + ;
+					REPLICATE(CHR(0), 28)
+
+				IF ShellExecuteEx(@lcInfo) = 0
+					HeapFree(lnHeap, 0, lnPtr) && Comprobar si es correcto limpiar el puntero aqui
+					IF tlDebug
+						? "Could not call process"
+					ENDIF
+					lnExitCode	= -1
+					EXIT
+				ELSE
+					HeapFree(lnHeap, 0, lnPtr)
+					ln_hProcess	= CTOBIN(RIGHT(lcInfo, 4), [4RS])
+					ln_hThread	= 0
+
+					IF tlDebug
+						? "Process handle    = "+TRANSFORM(ln_hProcess)
+						? "Thread handle     = "+TRANSFORM(ln_hThread)
+					ENDIF
+
+					*IF lnProcess != 0
+					*	WaitForSingleObject(ln_hProcess, WAIT_MILLISECOND)
+					*	IF tlDebug
+					*		? "Terminating process!"
+					*	ENDIF
+					*	TerminateProcess(ln_hProcess, 0)
+					*ENDIF
+				ENDIF
+			
+			ELSE
+				IF tlDebug
+					? "Could not create process"
+				ENDIF
+				lnExitCode	= -1
+				EXIT
+			ENDIF
+		ELSE
+
+			* Process and thread handles returned in ProcInfo structure
+			ln_hProcess 	= CTOBIN( LEFT( lcProcessInfo, 4 ), '4RS' )
+			ln_hThread		= CTOBIN( SUBSTR( lcProcessInfo, 5, 4 ), '4RS' )
+			ln_dwProcessId	= CTOBIN( SUBSTR( lcProcessInfo, 9, 4 ), '4RS' )
+			ln_dwThreadId	= CTOBIN( SUBSTR( lcProcessInfo, 13, 4 ), '4RS' )
+
+			IF tlDebug
+				? "Process handle    = "+TRANSFORM(ln_hProcess)
+				? "Thread handle     = "+TRANSFORM(ln_hThread)
+				? "Process handle id = "+TRANSFORM(ln_dwProcessId)
+				? "Thread handle id  = "+TRANSFORM(ln_dwThreadId)
+			ENDIF
+		ENDIF
+
+		IF tbWaitOnReturn THEN
+			* // Give the process time to execute and finish
+			lnExitCode = STILL_ACTIVE
+
+			DO WHILE lnExitCode = STILL_ACTIVE
+				lnWfSO	= WaitForSingleObject(ln_hProcess, lnTimeout)
+
+				IF tlDebug
+					? 'lnWfSO = ' + TRANSFORM(lnWfSO)
+				ENDIF
+
+				IF GetExitCodeProcess(ln_hProcess, @lnExitCode) <> 0
+					IF lnExitCode = STILL_ACTIVE
+						DO CASE
+						CASE lnWfSO = WAIT_TIMEOUT
+							IF tlDebug
+								? "Exit code = "+ TRANSFORM(lnWfSO) + " (WAIT_TIMEOUT)"
+							ENDIF
+							TerminateProcess(ln_hProcess, 0)
+							lnExitCode = WAIT_TIMEOUT
+
+						CASE lnWfSO = WAIT_FAILED
+							IF tlDebug
+								? "Exit code = "+ TRANSFORM(lnWfSO) + " (WAIT_FAILED)"
+							ENDIF
+
+						CASE lnWfSO = WAIT_OBJECT_0
+							IF tlDebug
+								? "Exit code = "+ TRANSFORM(lnWfSO) + " (WAIT_OBJECT_0)"
+							ENDIF
+
+						CASE lnWfSO = WAIT_ABANDONED
+							IF tlDebug
+								? "Exit code = "+ TRANSFORM(lnWfSO) + " (WAIT_ABANDONED)"
+							ENDIF
+
+						OTHERWISE
+							IF tlDebug
+								? "Exit code = "+ TRANSFORM( lnExitCode )
+							ENDIF
+						ENDCASE
+					ELSE
+						IF tlDebug
+							? "Exit code = "+ TRANSFORM( lnExitCode )
+						ENDIF
+					ENDIF
+				ELSE
+					IF tlDebug
+						? "GetExitCodeProcess() failed"
+					ENDIF
+					lnExitCode	= -2
+				ENDIF
+
+				*DOEVENTS
+			ENDDO
+		ELSE
+			lnExitCode	= 0
+		ENDIF
+
+		*-- DOCUMENTACIÓN sobre cierre procesos/threads:
+		*-- https://msdn.microsoft.com/en-us/library/windows/desktop/ms682512%28v=vs.85%29.aspx
+		=CloseHandle(ln_hProcess)
+		=CloseHandle(ln_hThread)
+
+		IF tlDebug
+			? '> FUNCTION RETURN VALUE = '
+			?? lnExitCode
+		ENDIF
+	ENDTRY
+
+	RETURN lnExitCode
+ENDFUNC
+
+
+FUNCTION CloseHandle(hObject as Integer)
+	*-- DOCUMENTACIÓN sobre cierre procesos/threads:
+	*-- https://msdn.microsoft.com/en-us/library/windows/desktop/ms682512%28v=vs.85%29.aspx
+	DECLARE INTEGER 'CloseHandle' IN kernel32.DLL INTEGER hObject
+	RETURN CloseHandle(hObject)
+ENDFUNC
+
+
+FUNCTION CreateProcess(lpszModuleName as String, lpszCommandLine as String, lpSecurityAttributesProcess as String ;
+		, lpSecurityAttributesThread as String, bInheritHandles as Short, dwCreateFlags as Integer ;
+		, lpvEnvironment as String, lpszStartupDir as String, tpStartupInfo as String, tpProcessInfo as String) as Short
+
+	* DOCUMENTACIÓN estructura _STARTUPINFO:
+	* creates the STARTUP structure to specify main window
+	* properties if a new window is created for a new process
+
+	*| typedef struct _STARTUPINFO {
+	*|     DWORD   cb;                4
+	*|     LPTSTR  lpReserved;        4
+	*|     LPTSTR  lpDesktop;         4
+	*|     LPTSTR  lpTitle;           4
+	*|     DWORD   dwX;               4
+	*|     DWORD   dwY;               4
+	*|     DWORD   dwXSize;           4
+	*|     DWORD   dwYSize;           4
+	*|     DWORD   dwXCountChars;     4
+	*|     DWORD   dwYCountChars;     4
+	*|     DWORD   dwFillAttribute;   4
+	*|     DWORD   dwFlags;           4
+	*|     WORD    wShowWindow;       2
+	*|     WORD    cbReserved2;       2
+	*|     LPBYTE  lpReserved2;       4
+	*|     HANDLE  hStdInput;         4
+	*|     HANDLE  hStdOutput;        4
+	*|     HANDLE  hStdError;         4
+	*| } STARTUPINFO, *LPSTARTUPINFO; total: 68 bytes
+
+	* DOCUMENTACIÓN estructura _PROCESS_INFORMATION:
+	* https://msdn.microsoft.com/en-us/library/windows/desktop/ms684873%28v=vs.85%29.aspx
+	*    typedef struct _PROCESS_INFORMATION {
+	*        HANDLE hProcess;
+	*        HANDLE hThread;
+	*        DWORD dwProcessId;
+	*        DWORD dwThreadId;
+	*    } PROCESS_INFORMATION;
+	*
+	DECLARE SHORT 'CreateProcess' IN WIN32API ;
+		STRING lpszModuleName, ;
+		STRING @lpszCommandLine, ;
+		STRING lpSecurityAttributesProcess, ;
+		STRING lpSecurityAttributesThread, ;
+		SHORT bInheritHandles, ;
+		INTEGER dwCreateFlags, ;
+		STRING lpvEnvironment, ;
+		STRING lpszStartupDir, ;
+		STRING tpStartupInfo, ;
+		STRING @tpProcessInfo
+
+	RETURN CreateProcess( lpszModuleName, @lpszCommandLine,0,0,0,0,0,0, tpStartupInfo, @tpProcessInfo )
+ENDFUNC
+
+
+FUNCTION GetExitCodeProcess(hProcess as Integer, lpExitCode as Integer) as Integer
+	DECLARE INTEGER 'GetExitCodeProcess' IN WIN32API INTEGER hProcess, INTEGER @ lpExitCode
+	RETURN GetExitCodeProcess(hProcess, @lpExitCode)
+ENDFUNC
+
+
+FUNCTION GetProcessHeap as Long
+	DECLARE LONG 'GetProcessHeap' IN WIN32API
+	RETURN GetProcessHeap()
+ENDFUNC
+
+
+FUNCTION HeapAlloc(hHeap as Long, dwFlags as Long, dwBytes as Long) as Long
+	DECLARE LONG 'HeapAlloc' IN WIN32API LONG hHeap, LONG dwFlags, LONG dwBytes
+	RETURN HeapAlloc(hHeap, dwFlags, dwBytes)
+ENDFUNC
+
+
+FUNCTION HeapFree(hHeap as Long, dwFlags as Long, lpMem as Long) as Long
+	DECLARE LONG 'HeapFree' IN WIN32API LONG hHeap, LONG dwFlags, LONG lpMem
+	RETURN HeapFree(hHeap, dwFlags, lpMem)
+ENDFUNC
+
+
+FUNCTION MoveFile(lpExistingFileName, lpNewFileName) 
+	* Return value: 0=Error, !0=OK
+	DECLARE Long MoveFile IN WIN32API String lpExistingFileName, String lpNewFileName
+	RETURN MoveFile(lpExistingFileName, lpNewFileName)
+ENDFUNC
+
+
+FUNCTION ShellExecuteEx(tpStartupInfo as String) as Long
+	DECLARE LONG 'ShellExecuteEx' IN SHELL32.DLL STRING @tpStartupInfo
+	* DOCUMENTACIÓN estructura _SHELLEXECUTEINFO:
+	* https://msdn.microsoft.com/en-us/library/windows/desktop/bb759784%28v=vs.85%29.aspx
+	*typedef struct _SHELLEXECUTEINFO {
+	*    DWORD     cbSize;            4
+	*    ULONG     fMask;             4
+	*    HWND      hwnd;              4
+	*    LPCTSTR   lpVerb;            4
+	*    LPCTSTR   lpFile;            4
+	*    LPCTSTR   lpParameters;      4
+	*    LPCTSTR   lpDirectory;       4
+	*    int       nShow;             4
+	*    HINSTANCE hInstApp;          4
+	*    LPVOID    lpIDList;          4
+	*    LPCTSTR   lpClass;           4
+	*    HKEY      hkeyClass;         4
+	*    DWORD     dwHotKey;          4
+	*    union {
+	*        HANDLE hIcon;            
+	*        HANDLE hMonitor;         
+	*    } DUMMYUNIONNAME;            4
+	*    HANDLE    hProcess;          4
+	*} SHELLEXECUTEINFO, *LPSHELLEXECUTEINFO;
+	*
+	RETURN ShellExecuteEx(@tpStartupInfo)
+ENDFUNC
+
+
+PROCEDURE Sleep(tnTimeout_mSecs) as VOID
+	DECLARE 'Sleep' IN WIN32API INTEGER
+	Sleep(tnTimeout_mSecs)
+ENDPROC
+
+
+FUNCTION TerminateProcess(hProcess as Long, uExitCode as Long)
+	DECLARE LONG 'TerminateProcess' IN WIN32API LONG hProcess, LONG uExitCode
+	RETURN TerminateProcess(hProcess, uExitCode)
+ENDFUNC
+
+
+FUNCTION WaitForSingleObject(hHandle as Integer, dwMilliseconds as Long)
+	DECLARE LONG 'WaitForSingleObject' IN WIN32API INTEGER hHandle, LONG dwMilliseconds
+	RETURN WaitForSingleObject(hHandle, dwMilliseconds)
+ENDFUNC
+
+
