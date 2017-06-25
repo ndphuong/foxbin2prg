@@ -199,6 +199,7 @@
 * 11/04/2017	FDBOZZO		v1.19.49	Bug Fix frx: Cuando dentro de una expresión se usa "&&", se corrompe el registro del FRX generado (Alejandro A Sosa)
 * 11/04/2017	FDBOZZO		v1.19.49	Mejora cfg : En modo objeto permitir indicar un objeto CFG en lugar de un archivo CFG (Lutz Scheffler)
 * 12/04/2017	DH&FDBOZZO	v1.19.49	Bug Fix & Report pjx: No se estaba guardando el campo User en los archivos PJX (Doug Hennig)
+* 26/04/2017	FDBOZZO		v1.19.50	Mejora vcx: Nuevos comandos para obtener información de las clases
 * </HISTORIAL DE CAMBIOS Y NOTAS IMPORTANTES>
 *
 *---------------------------------------------------------------------------------------------------
@@ -499,6 +500,7 @@ LPARAMETERS tc_InputFile, tcType, tcTextName, tlGenText, tcDontShowErrors, tcDeb
 *-- From FOXPRO.H
 *-- File Object Type Property
 #DEFINE FILETYPE_DATABASE          "d"  && Database (.DBC)
+#DEFINE FILETYPE_DBC_TABLE         "t"  && Database table (.DBF)
 #DEFINE FILETYPE_FREETABLE         "D"  && Free table (.DBF)
 #DEFINE FILETYPE_QUERY             "Q"  && Query (.QPR)
 #DEFINE FILETYPE_FORM              "K"  && Form (.SCX)
