@@ -4187,41 +4187,56 @@ DEFINE CLASS c_foxbin2prg AS Session
 					.writeLog( C_TAB + C_TAB + '* ' + TEXTMERGE(loLang.C_OUTPUTFILE_TIMESTAMP_EQUAL_THAN_INPUTFILE_TIMESTAMP_LOC) )
 
 				OTHERWISE
-					.c_Type								= UPPER(JUSTEXT(.c_OutputFile))
-					loConversor.c_InputFile				= .c_InputFile
-					loConversor.c_OutputFile			= .c_OutputFile
-					loConversor.c_LogFile				= .c_LogFile
-					loConversor.n_Debug					= .n_Debug
-					loConversor.l_Test					= .l_Test
-					loConversor.n_FB2PRG_Version		= .n_FB2PRG_Version
-					loConversor.l_MethodSort_Enabled	= .l_MethodSort_Enabled
-					loConversor.l_PropSort_Enabled		= .l_PropSort_Enabled
-					loConversor.l_ReportSort_Enabled	= .l_ReportSort_Enabled
-					loConversor.c_OriginalFileName		= .c_OriginalFileName
-					loConversor.c_Foxbin2prg_FullPath	= .c_Foxbin2prg_FullPath
-					*--
-					.updateProgressbar( loLang.C_PROCESSING_LOC + ' ' + .c_InputFile + '...', 0, 0, 0 )
+					DO CASE
+					CASE lcExtension = "SCX"
+						m.lSkip = AreScxAndSc2Equal(.c_InputFile, .c_OutputFile)
+					CASE lcExtension = "SC2"
+						m.lSkip = AreScxAndSc2Equal(.c_OutputFile, .c_InputFile)
+					CASE lcExtension = "VCX"
+						m.lSkip = AreVcxAndVc2Equal(.c_InputFile, .c_OutputFile)
+					CASE lcExtension = "VC2"
+						m.lSkip = AreVcxAndVc2Equal(.c_OutputFile, .c_InputFile)
+					OTHERWISE
+						m.lSkip = .F.
+					ENDCASE
 
-					IF AEVENTS( laEvents, loConversor ) = 0 THEN
-						BINDEVENT( loConversor, 'updateProgressbar', THIS, 'updateProgressbar' )
-					ENDIF
+					IF NOT M.lSkip
+						.c_Type								= UPPER(JUSTEXT(.c_OutputFile))
+						loConversor.c_InputFile				= .c_InputFile
+						loConversor.c_OutputFile			= .c_OutputFile
+						loConversor.c_LogFile				= .c_LogFile
+						loConversor.n_Debug					= .n_Debug
+						loConversor.l_Test					= .l_Test
+						loConversor.n_FB2PRG_Version		= .n_FB2PRG_Version
+						loConversor.l_MethodSort_Enabled	= .l_MethodSort_Enabled
+						loConversor.l_PropSort_Enabled		= .l_PropSort_Enabled
+						loConversor.l_ReportSort_Enabled	= .l_ReportSort_Enabled
+						loConversor.c_OriginalFileName		= .c_OriginalFileName
+						loConversor.c_Foxbin2prg_FullPath	= .c_Foxbin2prg_FullPath
+						*--
+						.updateProgressbar( loLang.C_PROCESSING_LOC + ' ' + .c_InputFile + '...', 0, 0, 0 )
 
-					loConversor.convert( @toModulo, .F., THIS )
+						IF AEVENTS( laEvents, loConversor ) = 0 THEN
+							BINDEVENT( loConversor, 'updateProgressbar', THIS, 'updateProgressbar' )
+						ENDIF
 
-					IF loConversor.l_Error THEN
-						.l_Error = .T.
-					ENDIF
+						loConversor.convert( @toModulo, .F., THIS )
 
-					.n_ProcessedFilesCount	= .n_ProcessedFilesCount + 1
-					.writeLog()
-					.writeLog(loConversor.c_TextLog)	&& Recojo el LOG que haya generado el conversor
+						IF loConversor.l_Error THEN
+							.l_Error = .T.
+						ENDIF
 
-					*-- Logueo los errores
-					IF NOT EMPTY(loConversor.c_TextErr) THEN
-						.writeErrorLog( REPLICATE( '-', 100 ), 1 )
-						.writeErrorLog( loLang.C_ERRORS_FOUND_IN_FILE_LOC + ' [' + .c_InputFile + '] ' )
-						.writeErrorLog( loConversor.c_TextErr )
-						.writeErrorLog( )
+						.n_ProcessedFilesCount	= .n_ProcessedFilesCount + 1
+						.writeLog()
+						.writeLog(loConversor.c_TextLog)	&& Recojo el LOG que haya generado el conversor
+
+						*-- Logueo los errores
+						IF NOT EMPTY(loConversor.c_TextErr) THEN
+							.writeErrorLog( REPLICATE( '-', 100 ), 1 )
+							.writeErrorLog( loLang.C_ERRORS_FOUND_IN_FILE_LOC + ' [' + .c_InputFile + '] ' )
+							.writeErrorLog( loConversor.c_TextErr )
+							.writeErrorLog( )
+						ENDIF
 					ENDIF
 				ENDCASE
 
@@ -6497,8 +6512,8 @@ DEFINE CLASS c_conversor_base AS Custom
 						CASE NOT lcWord == 'TEXT'
 							EXIT
 
-						*CASE UPPER( LEFT( CHRTRAN( lcLine, ' ', '' ), 5 ) ) == 'TEXT='
-						*	EXIT
+							*CASE UPPER( LEFT( CHRTRAN( lcLine, ' ', '' ), 5 ) ) == 'TEXT='
+							*	EXIT
 						CASE lnWordCount >= 2
 							IF lcWord2 == "TO"
 								* OK, es TEXT TO...
@@ -6764,26 +6779,7 @@ DEFINE CLASS c_conversor_base AS Custom
 					ENDIF
 				ENDIF
 
-				*-- YYYY YYYM MMMD DDDD HHHH HMMM MMMS SSSS
-				lnResto		= tnTimeStamp
-				lnYear		= INT( lnResto / 2**25 + 1980)
-				lnResto		= lnResto % 2**25
-				lnMonth		= INT( lnResto / 2**21 )
-				lnResto		= lnResto % 2**21
-				lnDay		= INT( lnResto / 2**16 )
-				lnResto		= lnResto % 2**16
-				lnHour		= INT( lnResto / 2**11 )
-				lnResto		= lnResto % 2**11
-				lnMinutes	= INT( lnResto / 2**5 )
-				lnResto		= lnResto % 2**5
-				lnSeconds	= lnResto
-
-				lcTimeStamp	= PADL(lnYear,4,'0') + "/" + PADL(lnMonth,2,'0') + "/" + PADL(lnDay,2,'0') + " " ;
-					+ PADL(lnHour,2,'0') + ":" + PADL(lnMinutes,2,'0') + ":" + PADL(lnSeconds,2,'0')
-
-				ltTimeStamp	= EVALUATE( "{^" + lcTimeStamp + "}" )
-
-				lcTimeStamp_Ret	= TTOC( ltTimeStamp )
+				lcTimeStamp_Ret	= TTOC(TimestampToDatetime(tnTimeStamp))
 			ENDWITH
 
 		CATCH TO loEx
@@ -7328,12 +7324,7 @@ DEFINE CLASS c_conversor_base AS Custom
 				m.ltDateTime		= DATETIME()
 			ENDIF
 
-			tnTimeStamp = ( YEAR(m.ltDateTime) - 1980) * 2^25 ;
-				+ MONTH(m.ltDateTime) * 2^21 ;
-				+ DAY(m.ltDateTime) * 2^16 ;
-				+ HOUR(m.ltDateTime) * 2^11 ;
-				+ MINUTE(m.ltDateTime) * 2^5 ;
-				+ SEC(m.ltDateTime)
+			tnTimeStamp = DatetimeToTimestamp(ltDateTime)
 		ENDTRY
 
 		RETURN INT(tnTimeStamp)
@@ -7575,8 +7566,8 @@ DEFINE CLASS c_conversor_base AS Custom
 					* VER: https://github.com/fdbozzo/foxbin2prg/issues/28
 					*
 					* PASO 1: Obtener los nombres únicos y asignarles un código de orden
-					CREATE CURSOR C_OBJ (objName C(50), iOrder I AUTOINC)
-					INDEX ON objname TAG objname
+					CREATE CURSOR C_OBJ (OBJNAME C(50), IORDER I AUTOINC)
+					INDEX ON OBJNAME TAG OBJNAME
 
 					* PASO 2: Configurar las prioridades de ordenamiento (primero props, luego objs)
 					FOR I = 1 TO m.tnPropsAndValues_Count
@@ -7584,29 +7575,29 @@ DEFINE CLASS c_conversor_base AS Custom
 							IF m.tnSortType = 2
 								* Genera obj+props para BIN
 								lcObjName	= GETWORDNUM(laPropsAndValues(m.I,1), 1, '.')
-								
+
 								IF NOT SEEK(LOWER(lcObjName), "C_OBJ")
-									INSERT INTO C_OBJ (objName) VALUES (LOWER(lcObjName))
+									INSERT INTO C_OBJ (OBJNAME) VALUES (LOWER(lcObjName))
 								ENDIF
-								
-								laPropsAndValues(m.I,1)	= 'B' + PADL(C_OBJ.iOrder,3,'0') ;
+
+								laPropsAndValues(m.I,1)	= 'B' + PADL(C_OBJ.IORDER,3,'0') ;
 									+ JUSTSTEM(laPropsAndValues(m.I,1)) + '.' ;
 									+ .sortPropsAndValues_SetAndGetSCXPropNames( 'SETNAME', JUSTEXT(laPropsAndValues(m.I,1)) )
-								
+
 								*laPropsAndValues(m.I,1)	= 'B000' + lcObjName + '.' ;
-									+ .sortPropsAndValues_SetAndGetSCXPropNames( 'SETNAME', JUSTEXT(laPropsAndValues(m.I,1)) )
+								+ .sortPropsAndValues_SetAndGetSCXPropNames( 'SETNAME', JUSTEXT(laPropsAndValues(m.I,1)) )
 							ELSE
 								* Genera obj+props para TX2
 								lcObjName	= GETWORDNUM(laPropsAndValues(m.I,1), 1, '.')
-								
+
 								IF NOT SEEK(LOWER(lcObjName), "C_OBJ")
-									INSERT INTO C_OBJ (objName) VALUES (LOWER(lcObjName))
+									INSERT INTO C_OBJ (OBJNAME) VALUES (LOWER(lcObjName))
 								ENDIF
-								
-								laPropsAndValues(m.I,1)	= 'B' + PADL(C_OBJ.iOrder,3,'0') ;
+
+								laPropsAndValues(m.I,1)	= 'B' + PADL(C_OBJ.IORDER,3,'0') ;
 									+ JUSTSTEM(laPropsAndValues(m.I,1)) + '.' ;
 									+ JUSTEXT(laPropsAndValues(m.I,1))
-								
+
 								*laPropsAndValues(m.I,1)	= 'B' + PADL(I,3,'0') + laPropsAndValues(m.I,1)
 							ENDIF
 						ELSE
@@ -17510,7 +17501,7 @@ DEFINE CLASS c_conversor_dbf_a_prg AS c_conversor_bin_a_prg
 				IF NOT EMPTY(lc_DBC_Name) AND ADIR(laDirInfo, FULLPATH(lc_DBC_Name, .c_InputFile)) = 1
 					loDBC._DBC			= FULLPATH(lc_DBC_Name, .c_InputFile)
 					llDBCEventsEnabled	= loDBC.DBGETPROP(lc_DBC_Name,"DATABASE","DBCEvents")
-					
+
 					* llDBCEventsEnabled no siempre devuelve .T./.F., a veces devuelve ""
 					IF EMPTY(llDBCEventsEnabled)
 						llDBCEventsEnabled	= .F.
@@ -21957,7 +21948,7 @@ DEFINE CLASS CL_DBC_FIELDS_DB AS CL_DBC_COL_BASE
 				STORE NULL TO loField
 				STORE 0 TO I, lnField_Count
 				_TALLY	= 0
-				
+
 				SELECT LOWER(TB.ObjectName) FROM TABLABIN TB ;
 					INNER JOIN TABLABIN TB2 ON STR(TB.ParentId)+TB.ObjectType = STR(TB2.ObjectID)+PADR('Field',10) ;
 					AND LOWER(TB2.ObjectName) = PADR(LOWER(tcTable),128) ;
@@ -22701,12 +22692,12 @@ DEFINE CLASS CL_DBC_VIEWS AS CL_DBC_COL_BASE
 
 				*LG lnView_Count	= ADBOBJECTS( laViews, "VIEW" )
 				SELECT CAST(ALLTRIM(ObjectName) as varchar(128)) ;
-					FROM TablaBin ;
+					FROM TABLABIN ;
 					WHERE UPPER(ObjectType) = 'VIEW' ;
 					ORDER BY 1 ;
 					INTO ARRAY laViews
 				lnView_Count	= _TALLY
- 
+
 				IF lnView_Count > 0
 					FOR I = 1 TO lnView_Count
 						loView = CREATEOBJECT("CL_DBC_VIEW")
@@ -30262,7 +30253,7 @@ DEFINE CLASS CL_MEMVAR AS CL_COL_BASE
 	*	Byte Offset Description
 	*	----------- -------------------------------------------------------------------------------------------------
 	*	0 - 10      NULL terminated VarName. If VarName is empty, then VarName starts at offset 32
-	*	11          VarType (A,C,N,Y,B,F,I,Q,D,T,L,0). If VarType is lowercase, then next VarName 
+	*	11          VarType (A,C,N,Y,B,F,I,Q,D,T,L,0). If VarType is lowercase, then next VarName
 	*	            begins with 2 bytes for VarName length.
 	*	12 - 15     Reserved
 	*	16          Value length
@@ -30270,7 +30261,7 @@ DEFINE CLASS CL_MEMVAR AS CL_COL_BASE
 	*	18 - 24     Reserved
 	*	25          0x00 if it is an array element, 0x03 if it isn't an array element
 	*	26 - 31     Reserved
-	*	32 - n      If VarName (offset 0-10) is NULL then goto TABLE 1, If VarType=A then continue in TABLE 2, 
+	*	32 - n      If VarName (offset 0-10) is NULL then goto TABLE 1, If VarType=A then continue in TABLE 2,
 	*	            if VarType=0 then continue in TABLE 3, else continue in TABLE 4
 	*	...
 	*	eof         Last character is EOF (0x1A) character
@@ -30282,7 +30273,7 @@ DEFINE CLASS CL_MEMVAR AS CL_COL_BASE
 	*	----------- -------------------------------------------------------------------------------------------------
 	*	32 - 33     VarName length
 	*	34 - n      VarName
-	*	n  + 1      Next TABLE: If VarType=A then continue in TABLE 2, if VarType=0 then continue in TABLE 3, 
+	*	n  + 1      Next TABLE: If VarType=A then continue in TABLE 2, if VarType=0 then continue in TABLE 3,
 	*	            else continue in TABLE 4
 	*	----------- -------------------------------------------------------------------------------------------------
 
@@ -30307,7 +30298,7 @@ DEFINE CLASS CL_MEMVAR AS CL_COL_BASE
 	*	TABLE 4 - NORMAL VALUE STRUCTURE
 	*	Byte Offset Description
 	*	----------- -------------------------------------------------------------------------------------------------
-	*	n - x       Value of length "value length". If ValTye is a Char type then Value length is the value's width, 
+	*	n - x       Value of length "value length". If ValTye is a Char type then Value length is the value's width,
 	*	            else the width is 8 for numbers and dates
 	*	x           Next Variable structure, or EOF (0x1A)
 	*	----------- -------------------------------------------------------------------------------------------------
@@ -30746,3 +30737,158 @@ ENDDEFINE
 
 
 
+FUNCTION TimestampToDatetime
+	LPARAMETERS tnTimeStamp
+
+	LOCAL nYear, nMonth, nDay, nHour, nMinute, nSecond, tDatetime
+
+	TRY
+		m.nYear = BITAND(BITRSHIFT(tnTimeStamp, 25), 0x7F) + 1980
+		m.nMonth = BITAND(BITRSHIFT(tnTimeStamp, 21), 0x0F)
+		m.nDay = BITAND(BITRSHIFT(tnTimeStamp, 16), 0x1F)
+		m.nHour = BITAND(BITRSHIFT(tnTimeStamp, 11), 0x1F)
+		m.nMinute = BITAND(BITRSHIFT(tnTimeStamp, 5), 0x3F)
+		m.nSecond = BITLSHIFT(BITAND(tnTimeStamp, 0x1F), 1)
+
+		m.tDatetime = DATETIME(M.nYear, M.nMonth, M.nDay, M.nHour, M.nMinute, M.nSecond)
+	CATCH
+		m.tDatetime = { :}
+	ENDTRY
+
+	RETURN M.tDatetime
+ENDFUNC
+
+FUNCTION DatetimeToTimestamp
+	LPARAMETERS ltDateTime
+
+	LOCAL nYear, nMonth, nDay, nHour, nMinute, nSecond, nTimestamp
+
+	TRY
+		m.nYear = BITLSHIFT(YEAR(m.ltDateTime) - 1980, 25)
+		m.nMonth = BITLSHIFT(MONTH(m.ltDateTime), 21)
+		m.nDay = BITLSHIFT(DAY(m.ltDateTime), 16)
+		m.nHour = BITLSHIFT(HOUR(m.ltDateTime), 11)
+		m.nMinute = BITLSHIFT(MINUTE(m.ltDateTime), 5)
+		m.nSecond = BITRSHIFT(SEC(m.ltDateTime), 1)
+
+		m.nTimestamp = BITOR(BITOR(BITOR(BITOR(BITOR(M.nYear, M.nMonth), M.nDay), M.nHour), M.nMinute), M.nSecond)
+	CATCH
+		m.nTimestamp = 0
+	ENDTRY
+
+	RETURN M.nTimestamp
+ENDFUNC
+
+FUNCTION AreScxAndSc2Equal
+	LPARAMETERS cScx, cSc2
+
+	LOCAL ni, cForm, cFormName, cBaseClass, cTimestamp, nTimestamp, cScxFormName, nScxTimestamp, nCount
+
+	IF NOT FILE(M.cScx) OR NOT FILE(M.cSc2)
+		RETURN .F.
+	ENDIF
+
+	* Read SC2 and add infos to a collection
+	m.ni = 1
+
+	DO WHILE .T.
+		m.cForm = STREXTRACT(FILETOSTR(M.cSc2), [DEFINE CLASS], [/>], M.ni, 1+4)
+		IF EMPTY(M.cForm)
+			EXIT
+		ENDIF
+
+		m.cBaseClass = UPPER(ALLTRIM(STREXTRACT(M.cForm, [Baseclass="], ["], 1, 1)))
+		IF INLIST(M.cBaseClass, "FORM", "FORMSET")
+			m.cFormName = UPPER(ALLTRIM(STREXTRACT(M.cForm, [DEFINE CLASS ], [ AS ], 1, 1)))
+			m.cTimestamp = ALLTRIM(STREXTRACT(M.cForm, [Timestamp="], ["], 1, 1))
+			m.nTimestamp = DatetimeToTimestamp(CTOT(M.cTimestamp))
+			EXIT
+		ENDIF
+
+		m.ni = M.ni + 1
+	ENDDO
+
+	* Scan the scx and compare timestamps : if a timestamp differs, then scx needs to be rebuilt
+	USE (M.cScx) IN 0 AGAIN ALIAS Scx NOUPDATE
+
+	SELECT Scx
+	SET FILTER TO UPPER(PLATFORM) = "WINDOWS" AND NOT INLIST(UPPER(UNIQUEID), "SCREEN", "RESERVED") AND Timestamp <> 0 AND UPPER(Baseclass) = "FORM"
+	COUNT TO M.nCount
+	IF M.nCount <> 1
+		USE IN Scx
+		RETURN .F.
+	ENDIF
+	LOCATE
+	m.cScxFormName = UPPER(ALLTRIM(OBJNAME))
+	m.nScxTimestamp = Timestamp
+	USE IN Scx
+
+	IF M.cFormName <> M.cScxFormName OR M.nTimestamp <> M.nScxTimestamp
+		RETURN .F.
+	ENDIF
+
+	RETURN .T.
+ENDFUNC
+
+FUNCTION AreVcxAndVc2Equal
+	LPARAMETERS cVcx, cVc2
+
+	LOCAL oColl
+	LOCAL ni, cClass, cClassName, cTimestamp, nTimestamp, lEqual, nCount
+
+	IF NOT FILE(M.cVcx) OR NOT FILE(M.cVc2)
+		RETURN .F.
+	ENDIF
+
+	m.lEqual = .T.
+
+	* Read VC2 and add infos to a collection
+	m.oColl = CREATEOBJECT("Collection")
+
+	m.ni = 1
+
+	DO WHILE .T.
+		m.cClass = STREXTRACT(FILETOSTR(M.cVc2), [DEFINE CLASS], [/>], M.ni, 1+4)
+		IF EMPTY(M.cClass)
+			EXIT
+		ENDIF
+		m.cClassName = UPPER(ALLTRIM(STREXTRACT(M.cClass, [DEFINE CLASS ], [ AS ], 1, 1)))
+		m.cTimestamp = ALLTRIM(STREXTRACT(M.cClass, [Timestamp="], ["], 1, 1))
+
+		m.oColl.Add(DatetimeToTimestamp(CTOT(M.cTimestamp)), M.cClassName)
+
+		m.ni = M.ni + 1
+	ENDDO
+
+	* Scan the vcx and compare timestamps : if a timestamp differs, then vcx needs to be rebuilt
+	USE (M.cVcx) IN 0 AGAIN ALIAS Vcx NOUPDATE
+
+	SELECT Vcx
+	SET FILTER TO UPPER(PLATFORM) = "WINDOWS" AND NOT INLIST(UPPER(UNIQUEID), "CLASS", "RESERVED") AND Timestamp <> 0 AND UPPER(RESERVED1) = "CLASS"
+	COUNT TO M.nCount
+
+	IF M.oColl.Count <> M.nCount
+		RETURN .F.
+	ENDIF
+
+	SCAN
+		m.cClassName = UPPER(ALLTRIM(OBJNAME))
+
+		TRY
+			m.nTimestamp = M.oColl.Item(M.cClassName)
+			IF M.nTimestamp <> Timestamp
+				m.lEqual = .F.
+			ENDIF
+		CATCH
+			m.lEqual = .F.
+		ENDTRY
+
+		IF NOT M.lEqual
+			EXIT
+		ENDIF
+	ENDSCAN
+
+	USE IN Vcx
+
+	RETURN M.lEqual
+ENDFUNC
