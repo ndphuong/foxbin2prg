@@ -1,3 +1,9 @@
+For Katzkin
+- goto link folder
+- copy all file to SendTo folder (open run command and enter: *shell:sendto*
+- right click to each file and change path to correct value
+
+
 # FoxBin2Prg v1.19.57
 **Binary/Text Converting program for Microsoft Visual FoxPro**
 
